@@ -289,7 +289,7 @@
         try {
             // Province GeoJSON comes through Django (Vite proxies /backend to it),
             // so the browser never talks to GitHub or geoBoundaries directly
-            const response = await fetch(`${API}/provinces/`);
+            const response = await fetch(`${API}provinces/`);
 
             if (!response.ok) {
                 let message = "Province API failed";
