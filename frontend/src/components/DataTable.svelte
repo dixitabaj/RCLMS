@@ -94,6 +94,9 @@
 
 <div class="capture" bind:this={captureEl}>
   <h4 class="capture-title">{region}, {year}</h4>
+  {#if override?.loading}
+    <p class="loading">Loading…</p>
+  {:else}
   <AsyncState {state} isEmpty={rows.length === 0} {emptyText}>
     <div class="scroll">
       <table>
@@ -137,6 +140,7 @@
       <p class="note">"Filled with 0" means the source chart had no row for that class, so 0 was stored. It is not a confirmed zero.</p>
     {/if}
   </AsyncState>
+  {/if}
 </div>
 
 <style>
@@ -161,6 +165,8 @@
   /* White background so PNG / JPG / PDF are not transparent */
   .capture { background: #fff; padding: 8px; }
   .capture-title { display: none; margin: 0 0 6px; font-weight: 600; }
+
+  .loading { margin: 12px 0; text-align: center; font-size: 13px; color: #777; }
 
   .scroll { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: .93rem; }

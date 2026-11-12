@@ -112,6 +112,9 @@
   </h3>
 
   <div class="plot" bind:clientWidth={W} bind:clientHeight={H}>
+    {#if override?.loading}
+      <div class="loading">Loading…</div>
+    {:else}
     <AsyncState {state} isEmpty={pts.length === 0} emptyText={emptyMessage}>
       <div class="wrap" bind:this={wrapEl} on:mouseleave={hideTip} role="presentation">
         <svg width={w} height={h} viewBox="0 0 {w} {h}" role="img" aria-label="Trend of {className} over time">
@@ -158,6 +161,7 @@
         {/if}
       </div>
     </AsyncState>
+    {/if}
   </div>
 
   {#if pts.length}
@@ -222,6 +226,16 @@
   .year { font-size: 11px; }
   .axis-title { font-size: 12px; fill: #555; }
   .foot { margin: 4px 0 0; flex-shrink: 0; font-size: .82rem; color: #6a7a70; }
+
+  .loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    color: #777;
+  }
 
   .hit { fill: transparent; cursor: default; }
 

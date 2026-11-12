@@ -64,6 +64,9 @@
     : 'No yearly records for this class and region.';
 </script>
 
+{#if override?.loading}
+  <p class="loading">Loading…</p>
+{:else}
 <AsyncState {state} isEmpty={cards.length === 0} {emptyText}>
   <div class="cards">
     {#each cards as c}
@@ -75,8 +78,10 @@
     {/each}
   </div>
 </AsyncState>
+{/if}
 
 <style>
+  .loading { margin: 12px 0; text-align: center; font-size: 13px; color: #777; }
   .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
   .card {
     background: #fff; border-radius: 6px; padding: 12px 14px;
