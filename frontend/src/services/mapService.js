@@ -150,6 +150,7 @@ export function createBiodiversityLayer(map) {
         style: {
             color: "#d97706",
             weight: 2,
+            dashArray: "6 4",      // dashed so it differs from the solid ecoregion outlines
             opacity: 1,
             fillColor: "#f59e0b",
             fillOpacity: 0
@@ -276,10 +277,10 @@ export async function filterBiodiversityHotspot(map, layer, name) {
         {
             pane: "selectedHotspot",
             style: {
-                color: "#ff0000",
-                weight: 3,
+                color: "#f57c00",      // solid orange, thicker (selected ecoregion stays red)
+                weight: 2,
                 opacity: 1,
-                fillColor: "#ffff00",
+                fillColor: "#ffb74d",
                 fillOpacity: 0.08
             }
         }
