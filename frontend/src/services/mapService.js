@@ -493,7 +493,7 @@ export function createEcoregionLayer(map, info) {
 
             return {
                 color: "#333333",
-                weight: 1.5,
+                weight: 1,
                 fillColor: fill,
                 fillOpacity: 0.25
             };
