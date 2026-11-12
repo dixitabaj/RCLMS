@@ -65,11 +65,15 @@ TEMPLATES = [
 WSGI_APPLICATION = 'rlcms_backend.wsgi.application'
 
 CORS_ALLOWED_ORIGINS = [
-    o.strip()
-    for o in os.getenv(
-        "CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
-    ).split(",")
-    if o.strip()
+    "https://rclms-woad.vercel.app",
+    *[
+        o.strip()
+        for o in os.getenv(
+            "CORS_ALLOWED_ORIGINS",
+            "http://localhost:5173,http://127.0.0.1:5173"
+        ).split(",")
+        if o.strip()
+    ],
 ]
 
 # SQLite unless DATABASE_URL is set (then Postgres, later)
