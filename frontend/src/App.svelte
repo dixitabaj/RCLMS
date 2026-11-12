@@ -881,7 +881,7 @@
         overflow: hidden;
     }
     .change-slot { flex: 1; min-height: 0; min-width: 0; display: flex; overflow: hidden; }
-    .data { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+   .data { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding-top: 4px; }
 
 
 /* Medium laptops */
