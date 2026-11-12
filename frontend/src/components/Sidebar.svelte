@@ -53,7 +53,6 @@
 
 <aside class="sidebar">
 
-
     <div class="sidebar-content">
 
         <!-- Hindu Kush Himalaya region -->
@@ -95,7 +94,7 @@
                     </option>
                 {/each}
             </select>
-        </div> <!-- this closing tag was missing -->
+        </div>
 
         <!-- Biodiversity hotspot -->
         <div class="radio-group">
@@ -135,6 +134,24 @@
                 />
                 Draw polygon
             </label>
+        </div>
+
+        <!-- Nepal province -->
+        <div class="radio-group">
+            <label>
+                <input
+                    type="radio"
+                    name="parameter"
+                    value="province"
+                    bind:group={selectedParameter}
+                    on:change={updateFilters}
+                />
+                Nepal province
+            </label>
+
+            {#if selectedParameter === "province"}
+                <p class="hint">Click a province on the map to select it.</p>
+            {/if}
         </div>
 
         <!-- Year -->
@@ -234,6 +251,12 @@
         background: white;
         color: #444;
         font-size: 13px;
+    }
+
+    .hint {
+        margin: 4px 0 0 20px;
+        font-size: 12px;
+        color: #666;
     }
 
     .year-group {

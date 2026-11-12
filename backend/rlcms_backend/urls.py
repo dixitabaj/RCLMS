@@ -10,4 +10,5 @@ urlpatterns = [
     path("api/landcover/trend/", views.trend, name="landcover-trend"),
     path("api/landcover/records/", views.records, name="landcover-records"),
     path("api/landcover/export/", views.export_csv, name="landcover-export"),
+    path("api/provinces/", views.nepal_provinces, name="nepal-provinces"),
 ]

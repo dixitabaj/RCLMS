@@ -1,5 +1,5 @@
 <script>
-  import { filters, catalog } from '../stores/dashboard.js';
+  import { filters, catalog, customSeries } from '../stores/dashboard.js';
   import * as api from '../services/landcoverApi.js';
   import { REGION_TYPE_NOUN } from '../lib/classes.js';
 
@@ -54,10 +54,38 @@
     }
   }
 
+  // Regions computed in the browser (e.g. a Nepal province): no API call needed
+  function loadCustom(c, a, b) {
+    controller?.abort();
+    reqId++;
+
+    const toSummary = (yr) =>
+      c?.years?.[yr]
+        ? {
+            classes: Object.entries(c.years[yr]).map(([class_name, area_ha]) => ({
+              class_name,
+              area_ha,
+              filled_missing: false
+            }))
+          }
+        : null;
+
+    const sa = toSummary(a);
+    const sb = toSummary(b);
+
+    data = sa && sb ? { a: sa, b: sb } : null;
+    loading = !!c?.loading;
+    error = !data && !c?.loading ? c?.error ?? null : null;
+  }
+
   $: sameYear = fromYear !== null && fromYear === toYear;
 
   $: if ($filters.region && fromYear !== null && toYear !== null && !sameYear) {
-    load($filters.regionType, $filters.region, fromYear, toYear);
+    if ($filters.custom) {
+      loadCustom($customSeries, fromYear, toYear);
+    } else {
+      load($filters.regionType, $filters.region, fromYear, toYear);
+    }
   }
 
   // ---------- one row per land cover class ----------

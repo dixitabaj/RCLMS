@@ -37,8 +37,9 @@
     // Real ecoregion names read from the ArcGIS layer
     let ecoregionNames = [];
 
-    // ---------- Polygon analysis (unchanged, still uses analysisService) ----------
-    let selectedGeometry = null;
+    // ---------- Geometry analysis (drawn polygon or Nepal province) ----------
+    let selectedGeometry = null;   // drawn polygon geometry
+    let selectedProvince = null;   // { name, geometry } or null
     let polyAreaHa = null;
     let polyLoading = false;
     let polyError = null;
@@ -50,6 +51,10 @@
 
     function handlePolygon(event) {
         selectedGeometry = event.detail;
+    }
+
+    function handleProvince(event) {
+        selectedProvince = event.detail;
     }
 
     async function runAnalysis(geometry, year) {
@@ -71,16 +76,27 @@
         }
     }
 
-    // Polygon mode = the "Draw polygon" option is selected in the sidebar
+    // Polygon mode = "Draw polygon", province mode = "Nepal province"
     $: polygonMode = filters.parameter === "polygon";
+    $: provinceMode = filters.parameter === "province";
+    // A province that exists in the database behaves like an ecoregion (bar + line + change + table).
+    // Otherwise it falls back to the geometry analysis (bar chart only), like a drawn polygon.
+    $: geometryMode = polygonMode || (provinceMode && !provinceInDb);
 
-    $: if (polygonMode && selectedGeometry && filters.year) {
-        runAnalysis(selectedGeometry, filters.year);
+    // Whichever geometry is active in the current mode
+    $: analysisGeometry = polygonMode
+        ? selectedGeometry
+        : provinceMode
+            ? selectedProvince?.geometry ?? null
+            : null;
+
+    $: if (geometryMode && analysisGeometry && filters.year) {
+        runAnalysis(analysisGeometry, filters.year);
     }
 
     // ---------- Database mode (HKH / ecoregion / hotspot) ----------
     // Turn the sidebar choice into a (region_type, region) pair that exists in PostgreSQL
-    function resolveTarget(f) {
+    function resolveTarget(f, province) {
         switch (f.parameter) {
             case "hkh":
                 return { regionType: "hkh", region: "Hindu Kush Himalaya" };
@@ -88,6 +104,8 @@
                 return f.ecoregion ? { regionType: "ecoregion", region: f.ecoregion } : null;
             case "hotspot":
                 return f.hotspot ? { regionType: "hotspot", region: f.hotspot } : null;
+            case "province":
+                return province;
             default:
                 return null;
         }
@@ -97,7 +115,45 @@
     const CHART_NAME = { "Built-up": "Built-up area" };
 
     let regionMissing = false;
-    $: dbTarget = resolveTarget(filters);
+
+    // ---------- Province name matching ----------
+    // Region types in the database that are NOT provinces (skipped when searching for a province)
+    const SKIP_TYPES = ["hkh", "ecoregion", "hotspot"];
+
+    // geoBoundaries spelling -> your DB spelling (both already normalized: lowercase, letters only,
+    // without the words "province" / "pradesh"). Add more after checking the console output.
+    const ALIASES = {
+        sudurpashchim: "sudurpaschim"
+    };
+
+    const normName = (n) => {
+        const s = String(n ?? "")
+            .toLowerCase()
+            .replace(/\b(province|pradesh)\b/g, "")
+            .replace(/[^a-z0-9]/g, "");
+        return ALIASES[s] ?? s;
+    };
+
+    // Match the clicked province (geoBoundaries name, e.g. "Lumbini Province") to a region in the
+    // database catalog, searching every region type except the known non-province ones
+    $: provinceRegion = (() => {
+        if (!provinceMode || !selectedProvince || !$catalog.data) return null;
+
+        const wanted = normName(selectedProvince.name);
+
+        for (const t of $catalog.data.region_types ?? []) {
+            if (SKIP_TYPES.includes(t.region_type)) continue;
+
+            const match = (t.regions ?? []).find((r) => normName(r) === wanted);
+            if (match) return { regionType: t.region_type, region: match };
+        }
+
+        return null;
+    })();
+
+    $: provinceInDb = !!provinceRegion;
+
+    $: dbTarget = resolveTarget(filters, provinceRegion);
 
     // Push the sidebar choices into the store -> it fetches summary, trend and records
     $: if ($catalog.data && dbTarget) {
@@ -120,15 +176,20 @@
             : `No database records for ${dbTarget.region} in ${filters.year}`;
 
     // ---------- What the chart receives ----------
-    $: chartAreaHa = polygonMode ? polyAreaHa : dbAreaHa;
-    $: chartLoading = polygonMode ? polyLoading : $catalog.loading || $summary.loading;
-    $: chartError = polygonMode ? polyError : $catalog.error || $summary.error;
-    $: chartFilled = polygonMode ? [] : dbFilled;
-    $: chartHint = polygonMode ? "Draw a polygon on the map to see its land cover" : dbHint;
+    $: chartAreaHa = geometryMode ? polyAreaHa : dbAreaHa;
+    $: chartLoading = geometryMode ? polyLoading : $catalog.loading || $summary.loading;
+    $: chartError = geometryMode ? polyError : $catalog.error || $summary.error;
+    $: chartFilled = geometryMode ? [] : dbFilled;
+    $: chartHint = polygonMode
+        ? "Draw a polygon on the map to see its land cover"
+        : provinceMode && !provinceInDb
+            ? "Click a province on the map to see its land cover"
+            : dbHint;
 
     // Name of the selected area (used in the chart title)
     $: selectedArea = (() => {
         if (polygonMode) return selectedGeometry ? "the drawn polygon" : "custom polygon";
+        if (provinceMode) return selectedProvince?.name ?? "a Nepal province";
 
         switch (filters.parameter) {
             case "hkh":
@@ -156,11 +217,11 @@
 
     // Chart card tabs
     let tab = "chart";
-    $: if (polygonMode) tab = "chart";
+    $: if (geometryMode) tab = "chart";
 
     // "chart" = bar + line, "trend" = line chart only, "change" = gain/loss chart, "table" = table and export
-    $: showBar = polygonMode || tab === "chart";
-    $: showLine = !polygonMode && (tab === "trend" || (tab === "chart" && filters.showTrend));
+    $: showBar = geometryMode || tab === "chart";
+    $: showLine = !geometryMode && (tab === "trend" || (tab === "chart" && filters.showTrend));
 
     // ---------- Resizable middle section ----------
     // mapFraction: share of the height used by the map row (the charts get the rest)
@@ -347,6 +408,7 @@
                     {showEcoregion}
                     {showBiodiversity}
                     on:polygon={handlePolygon}
+                    on:province={handleProvince}
                 />
             </div>
         </div>
@@ -368,7 +430,7 @@
                 on:dblclick={resetRow}
             ></div>
 
-            {#if !polygonMode}
+            {#if !geometryMode}
                 <div class="tabs" role="tablist">
                     <button role="tab" aria-selected={tab === "chart"}
                             class:active={tab === "chart"} on:click={() => (tab = "chart")}>
@@ -392,7 +454,7 @@
                 </div>
             {/if}
 
-            {#if polygonMode || tab === "chart" || tab === "trend"}
+            {#if geometryMode || tab === "chart" || tab === "trend"}
                 <div
                     class="charts"
                     bind:this={chartsEl}
@@ -710,7 +772,7 @@
     .change-slot { flex: 1; min-height: 0; min-width: 0; display: flex; overflow: hidden; }
     .data { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
 
-    
+
 /* Medium laptops */
 @media (max-width: 1200px) and (min-width: 901px) {
     .layout {
