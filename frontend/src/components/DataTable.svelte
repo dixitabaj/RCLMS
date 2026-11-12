@@ -6,39 +6,95 @@
   import AsyncState from './AsyncState.svelte';
   import ExportMenu from './ExportMenu.svelte';
 
+  // Optional: { region, year, className, loading, error, rows, allRows }
+  // When given (ecoregion that is not in the database), it replaces the database store.
+  // rows = [{ id, class_name, area_ha, filled_missing }], allRows = [{ year, class_name, area_ha }]
+  export let override = null;
+
   let captureEl;   // the part that gets exported as an image / PDF
 
+  // ---------- where the data comes from ----------
+  $: state = override
+    ? { loading: override.loading, error: override.error, data: { results: override.rows } }
+    : $records;
+  $: region = override ? override.region : $filters.region;
+  $: year = override ? override.year : $filters.year;
+  $: className = override ? override.className : $filters.className;
+  $: missing = override ? false : $filters.missing;
+
   // Largest class first
-  $: rows = [...($records.data?.results ?? [])].sort((a, b) => b.area_ha - a.area_ha);
+  $: rows = [...(state.data?.results ?? [])].sort((a, b) => b.area_ha - a.area_ha);
   $: total = rows.reduce((sum, r) => sum + r.area_ha, 0);
   $: maxShare = total ? (100 * (rows[0]?.area_ha ?? 0)) / total : 0;
   $: share = (v) => (total ? (100 * v) / total : 0);
   $: anyFilled = rows.some((r) => r.filled_missing);
 
-  $: base = { region_type: $filters.regionType, region: $filters.region };
-  $: urlYear = exportUrl({ ...base, year: $filters.year });
-  $: urlAll = exportUrl(base);
+  // Server-side CSV links only exist for regions in the database
+  $: urlYear = override ? null : exportUrl({ region_type: $filters.regionType, region: $filters.region, year: $filters.year });
+  $: urlAll = override ? null : exportUrl({ region_type: $filters.regionType, region: $filters.region });
 
-  $: emptyText = $filters.missing
-    ? `No data found for "${$filters.region}".`
+  $: emptyText = missing
+    ? `No data found for "${region}".`
     : 'No records for this region and year.';
+
+  // ---------- CSV download (ecoregions outside the database, built in the browser) ----------
+  const csvCell = (v) => {
+    const s = String(v ?? '');
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  function downloadCsv(filename, header, lines) {
+    const blob = new Blob([[header, ...lines].join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const slug = (s) => String(s ?? 'region').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+
+  function downloadYear() {
+    downloadCsv(
+      `${slug(region)}_${year}.csv`,
+      'region,year,class,area_ha',
+      rows.map((r) => [region, year, r.class_name, r.area_ha].map(csvCell).join(','))
+    );
+  }
+
+  function downloadAll() {
+    downloadCsv(
+      `${slug(region)}_all_years.csv`,
+      'region,year,class,area_ha',
+      (override?.allRows ?? []).map((r) => [region, r.year, r.class_name, r.area_ha].map(csvCell).join(','))
+    );
+  }
 </script>
 
 <div class="head">
-  <h3>Land cover by class: {$filters.region}, {$filters.year}</h3>
-  <ExportMenu
-    target={captureEl}
-    {rows}
-    region={$filters.region}
-    year={$filters.year}
-    {urlYear}
-    {urlAll}
-    disabled={rows.length === 0} />
+  <h3>Land cover by class: {region}, {year}</h3>
+
+  {#if override}
+    <div class="dl">
+      <button on:click={downloadYear} disabled={rows.length === 0}>Download CSV ({year})</button>
+      <button on:click={downloadAll} disabled={!override.allRows?.length}>Download CSV (all years)</button>
+    </div>
+  {:else}
+    <ExportMenu
+      target={captureEl}
+      {rows}
+      {region}
+      {year}
+      {urlYear}
+      {urlAll}
+      disabled={rows.length === 0} />
+  {/if}
 </div>
 
 <div class="capture" bind:this={captureEl}>
-  <h4 class="capture-title">{$filters.region}, {$filters.year}</h4>
-  <AsyncState state={$records} isEmpty={rows.length === 0} {emptyText}>
+  <h4 class="capture-title">{region}, {year}</h4>
+  <AsyncState {state} isEmpty={rows.length === 0} {emptyText}>
     <div class="scroll">
       <table>
         <thead>
@@ -50,7 +106,7 @@
         </thead>
         <tbody>
           {#each rows as r (r.id)}
-            <tr class:sel={r.class_name === $filters.className}>
+            <tr class:sel={r.class_name === className}>
               <td>
                 <span class="swatch" style="background:{colorFor(r.class_name)}"></span>{r.class_name}
                 {#if r.filled_missing}
@@ -86,6 +142,21 @@
 <style>
   .head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
   h3 { margin: 0; font-weight: 400; font-size: 1.15rem; color: #222; }
+
+  .dl { display: flex; gap: 6px; flex-wrap: wrap; }
+  .dl button {
+    font: inherit;
+    font-size: 13px;
+    padding: 3px 12px;
+    border: 1px solid #0b7d3b;
+    background: white;
+    color: #0b7d3b;
+    border-radius: 14px;
+    cursor: pointer;
+  }
+  .dl button:hover:not(:disabled) { background: #0b7d3b; color: white; }
+  .dl button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .dl button:focus-visible { outline: 2px solid #0b6fd6; outline-offset: 2px; }
 
   /* White background so PNG / JPG / PDF are not transparent */
   .capture { background: #fff; padding: 8px; }

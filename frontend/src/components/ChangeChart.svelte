@@ -3,8 +3,22 @@
   import * as api from '../services/landcoverApi.js';
   import { REGION_TYPE_NOUN } from '../lib/classes.js';
 
+  // Optional: { region, year, loading, error, series, yearList }
+  // When given (ecoregion that is not in the database), it replaces the database store.
+  // series = { [year]: { [class name]: area_ha } }
+  export let override = null;
+
   const GAIN = '#2e7d32';
   const LOSS = '#c62828';
+
+  // ---------- where the data comes from ----------
+  $: region = override ? override.region : $filters.region;
+  $: regionType = override ? 'ecoregion' : $filters.regionType;
+  $: sidebarYear = override ? override.year : $filters.year;
+  $: isCustom = !!override || !!$filters.custom;
+  $: custom = override
+    ? { years: override.series, loading: override.loading, error: override.error }
+    : $customSeries;
 
   // ---------- year pickers ----------
   // "From" starts at the first year in the database, "To" follows the sidebar year
@@ -12,11 +26,11 @@
   let toYear = null;
   let lastSidebarYear = null;
 
-  $: years = $catalog.data?.years ?? [];
+  $: years = override ? override.yearList : ($catalog.data?.years ?? []);
   $: if (years.length && fromYear === null) fromYear = years[0];
-  $: if ($filters.year !== lastSidebarYear) {
-    lastSidebarYear = $filters.year;
-    toYear = $filters.year;
+  $: if (sidebarYear !== lastSidebarYear) {
+    lastSidebarYear = sidebarYear;
+    toYear = sidebarYear;
   }
 
   let metric = 'ha'; // 'ha' = change in hectares, 'pct' = change in %
@@ -54,7 +68,7 @@
     }
   }
 
-  // Regions computed in the browser (e.g. a Nepal province): no API call needed
+  // Regions computed in the browser (a Nepal province, or an ecoregion outside the database): no API call needed
   function loadCustom(c, a, b) {
     controller?.abort();
     reqId++;
@@ -80,11 +94,11 @@
 
   $: sameYear = fromYear !== null && fromYear === toYear;
 
-  $: if ($filters.region && fromYear !== null && toYear !== null && !sameYear) {
-    if ($filters.custom) {
-      loadCustom($customSeries, fromYear, toYear);
+  $: if (region && fromYear !== null && toYear !== null && !sameYear) {
+    if (isCustom) {
+      loadCustom(custom, fromYear, toYear);
     } else {
-      load($filters.regionType, $filters.region, fromYear, toYear);
+      load(regionType, region, fromYear, toYear);
     }
   }
 
@@ -183,9 +197,9 @@
   const hideTip = () => (tip = null);
 
   // ---------- text ----------
-  $: regionLabel = $filters.regionType === 'hkh'
+  $: regionLabel = regionType === 'hkh'
     ? 'HKH region'
-    : `${$filters.region} ${REGION_TYPE_NOUN[$filters.regionType] ?? ''}`.trim();
+    : `${region} ${REGION_TYPE_NOUN[regionType] ?? ''}`.trim();
 
   $: message = error
     ? error

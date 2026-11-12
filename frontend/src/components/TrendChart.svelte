@@ -5,6 +5,10 @@
   import { compact, full } from '../lib/format.js';
   import AsyncState from './AsyncState.svelte';
 
+  // Optional: { state: { loading, error, data: { points } }, className, region }
+  // When given (ecoregion that is not in the database), it replaces the database store.
+  export let override = null;
+
   const dispatch = createEventDispatcher();
 
   // Same names as the sidebar and the Django API (the API rejects any other spelling)
@@ -25,6 +29,12 @@
     dispatch('classChange', event.target.value);
   }
 
+  // Source of the data: the override if given, otherwise the database store
+  $: state = override ? override.state : $trend;
+  $: className = override ? override.className : $filters.className;
+  $: region = override ? override.region : $filters.region;
+  $: missing = override ? false : $filters.missing;
+
   // The chart is drawn at the real pixel size of its box, so text stays the
   // same size and the chart always fills the card (no stretched fonts).
   const M = { l: 74, r: 22, t: 14, b: 32 };
@@ -36,7 +46,7 @@
   $: ih = h - M.t - M.b;
 
   // No points at all when the region is missing from the database
-  $: pts = $filters.missing ? [] : ($trend.data?.points ?? []);
+  $: pts = missing ? [] : (state?.data?.points ?? []);
   $: vals = pts.map((p) => p.area_ha);
   $: lo = vals.length ? Math.min(...vals) : 0;
   $: hi = vals.length ? Math.max(...vals) : 1;
@@ -58,11 +68,11 @@
   $: pxPerYear = iw / Math.max(x1 - x0, 1);
   $: yearStep = Math.max(1, Math.ceil(36 / pxPerYear));
 
-  $: color = colorFor($filters.className);
-  $: stroke = $filters.className === 'Cropland' || $filters.className === 'Grassland' ? '#6b7d00' : color;
+  $: color = colorFor(className);
+  $: stroke = className === 'Cropland' || className === 'Grassland' ? '#6b7d00' : color;
 
-  $: emptyMessage = $filters.missing
-    ? `No data found for "${$filters.region}".`
+  $: emptyMessage = missing
+    ? `No data found for "${region}".`
     : 'No yearly records for this class and region.';
 
   // ---------- Hover tooltip ----------
@@ -88,23 +98,23 @@
 
     <select
       id="landcover-class"
-      value={$filters.className}
+      value={className}
       on:change={handleClassChange}
     >
-      {#each landcoverClasses as className}
-        <option value={className}>{className}</option>
+      {#each landcoverClasses as c}
+        <option value={c}>{c}</option>
       {/each}
     </select>
   </div>
 
   <h3>
-    {$filters.className} in {$filters.region}{pts.length ? `, ${x0}–${x1}` : ''}
+    {className} in {region}{pts.length ? `, ${x0}–${x1}` : ''}
   </h3>
 
   <div class="plot" bind:clientWidth={W} bind:clientHeight={H}>
-    <AsyncState state={$trend} isEmpty={pts.length === 0} emptyText={emptyMessage}>
+    <AsyncState {state} isEmpty={pts.length === 0} emptyText={emptyMessage}>
       <div class="wrap" bind:this={wrapEl} on:mouseleave={hideTip} role="presentation">
-        <svg width={w} height={h} viewBox="0 0 {w} {h}" role="img" aria-label="Trend of {$filters.className} over time">
+        <svg width={w} height={h} viewBox="0 0 {w} {h}" role="img" aria-label="Trend of {className} over time">
           <text class="axis-title" transform="rotate(-90) translate({-(M.t + ih / 2)} 14)" text-anchor="middle">Area (ha)</text>
           {#each yTicks as t}
             <line x1={M.l} x2={w - M.r} y1={y(t)} y2={y(t)} class="grid" />
@@ -139,7 +149,7 @@
         {#if tip}
           <div class="tip" class:flip={tip.flip} class:below={tip.below}
                style="left: {tip.x}px; top: {tip.y}px;">
-            <div class="tip-name">{$filters.className} · {tip.p.year}</div>
+            <div class="tip-name">{className} · {tip.p.year}</div>
             <div class="tip-value">{full(tip.p.area_ha)} ha</div>
             {#if tip.p.filled_missing}
               <div class="tip-note">No row in source chart, stored as 0</div>

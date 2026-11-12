@@ -13,8 +13,8 @@
     import DataTable from "./components/DataTable.svelte";
     import ChangeChart from "./components/ChangeChart.svelte";
 
-    import { loadEcoregionInfo } from "./services/mapService.js";
-    import { fetchAreaByClass } from "./services/analysisService.js";
+    import { loadEcoregionInfo, fetchEcoregionGeometry } from "./services/mapService.js";
+    import { fetchAreaByClass, fetchAreaCached } from "./services/analysisService.js";
     import { years } from "./data/landcoverYears.js";
     // NEW: database store (the store's own `filters` is not imported on purpose,
     // so it can't clash with the local `filters` below)
@@ -50,13 +50,19 @@
     }
 
     function handleTrendClassChange(event) {
-    applyFilters({
-        regionType: dbTarget.regionType,
-        region: dbTarget.region,
-        year: Number(filters.year),
-        className: event.detail
-    });
-}
+        // Ecoregion that is not in the database: the series is built locally, no store call
+        if (ecoregionFallback) {
+            trendClass = event.detail;
+            return;
+        }
+
+        applyFilters({
+            regionType: dbTarget.regionType,
+            region: dbTarget.region,
+            year: Number(filters.year),
+            className: event.detail
+        });
+    }
 
     function handlePolygon(event) {
         selectedGeometry = event.detail;
@@ -90,14 +96,167 @@
     $: provinceMode = filters.parameter === "province";
     // A province that exists in the database behaves like an ecoregion (bar + line + change + table).
     // Otherwise it falls back to the geometry analysis (bar chart only), like a drawn polygon.
-    $: geometryMode = polygonMode || (provinceMode && !provinceInDb);
+    // An ecoregion that is NOT in the database falls back to the geometry analysis (bar chart only)
+    $: ecoregionMode = filters.parameter === "ecoregion" && !!filters.ecoregion;
+    $: ecoregionInDb =
+        ecoregionMode &&
+        ($catalog.data?.region_types.find((t) => t.region_type === "ecoregion")?.regions ?? [])
+            .includes(filters.ecoregion);
+    // wait until the catalog has answered (data or error) before deciding
+    $: ecoregionFallback =
+        ecoregionMode && !!($catalog.data || $catalog.error) && !ecoregionInDb;
+
+    $: geometryMode =
+        polygonMode || (provinceMode && !provinceInDb) || ecoregionFallback;
+
+    // Fetch the ecoregion boundary only when the ecoregion itself changes (not on year change)
+    let ecoregionGeometry = null;
+    let ecoLoading = false;
+    let ecoError = null;
+    let ecoRequestId = 0;
+
+    async function loadEcoregionGeometry(name) {
+        const requestId = ++ecoRequestId;
+        ecoregionGeometry = null;
+        ecoSeries = null;
+        ecoSeriesFor = null;
+        ecoLoading = true;
+        ecoError = null;
+
+        try {
+            const geometry = await fetchEcoregionGeometry(name);
+            if (requestId !== ecoRequestId) return;
+            if (!geometry) throw new Error(`No boundary found for ${name}`);
+            ecoregionGeometry = geometry;
+        } catch (error) {
+            if (requestId !== ecoRequestId) return;
+            console.error(error);
+            ecoError = error.message;
+        } finally {
+            if (requestId === ecoRequestId) ecoLoading = false;
+        }
+    }
+
+    $: ecoName = ecoregionFallback ? filters.ecoregion : "";
+    $: if (ecoName) loadEcoregionGeometry(ecoName);
+
+    // ---------- Ecoregion trend (one analysis request per year) ----------
+    // Only for ecoregions that are not in the database, and only once the Line chart / Change / Table
+    // tab is opened. The same series feeds all three tabs.
+    let trendClass = "Forest";
+    $: trendClass = filters.landcover; // a sidebar change resets the dropdown
+
+    let ecoSeries = null;        // { [year]: area_ha object returned by the analysis API }
+    let ecoSeriesFor = null;     // the geometry that ecoSeries belongs to
+    let ecoTrendLoading = false;
+    let ecoTrendError = null;
+    let ecoTrendRequestId = 0;
+
+    async function loadEcoTrend(geometry) {
+        const requestId = ++ecoTrendRequestId;
+        ecoSeriesFor = geometry;
+        ecoSeries = null;
+        ecoTrendLoading = true;
+        ecoTrendError = null;
+
+        const yearList = years.map((y) => Number(y.year));
+        const result = {};
+
+        try {
+            // 4 requests at a time so the server is not flooded
+            for (let i = 0; i < yearList.length; i += 4) {
+                const batch = yearList.slice(i, i + 4);
+                const rows = await Promise.all(
+                    batch.map((yr) => fetchAreaCached(filters.ecoregion, geometry, yr))
+                );
+                if (requestId !== ecoTrendRequestId) return;
+                batch.forEach((yr, j) => (result[yr] = rows[j].area_ha));
+            }
+            ecoSeries = result;
+        } catch (error) {
+            if (requestId !== ecoTrendRequestId) return;
+            console.error(error);
+            ecoTrendError = error.message;
+        } finally {
+            if (requestId === ecoTrendRequestId) ecoTrendLoading = false;
+        }
+    }
+
+    $: if (ecoregionFallback && tab !== "chart" && ecoregionGeometry && ecoSeriesFor !== ecoregionGeometry) {
+        loadEcoTrend(ecoregionGeometry);
+    }
+
+    // Selected class -> [{ year, area_ha }] (the API may call it "Built-up area")
+    $: ecoTrendData = ecoSeries
+        ? {
+              points: Object.keys(ecoSeries)
+                  .map(Number)
+                  .sort((a, b) => a - b)
+                  .map((yr) => {
+                      const a = ecoSeries[yr] ?? {};
+                      const v = a[trendClass] ?? a[CHART_NAME[trendClass]] ?? 0;
+                      return { year: yr, area_ha: Number(v) || 0, filled_missing: false };
+                  })
+          }
+        : null;
+
+    // ---------- Shared data for the Line chart, Change, Summary cards and Table ----------
+    $: ecoBusy = ecoLoading || ecoTrendLoading || (!ecoSeries && !ecoTrendError && !ecoError);
+    $: ecoErr = ecoTrendError || ecoError;
+    $: ecoYearList = years.map((y) => Number(y.year)).sort((a, b) => a - b);
+    $: ecoYear = Number(filters.year);
+
+    // Selected year: one row per class (what the table and the summary cards use)
+    $: ecoRows = ecoSeries?.[ecoYear]
+        ? Object.entries(ecoSeries[ecoYear]).map(([class_name, area_ha]) => ({
+              id: class_name,
+              class_name,
+              area_ha: Number(area_ha) || 0,
+              filled_missing: false
+          }))
+        : [];
+    $: ecoTotal = ecoRows.reduce((sum, r) => sum + r.area_ha, 0);
+
+    // Every year and class (used by the "all years" CSV download)
+    $: ecoAllRows = ecoSeries
+        ? Object.keys(ecoSeries)
+              .map(Number)
+              .sort((a, b) => a - b)
+              .flatMap((yr) =>
+                  Object.entries(ecoSeries[yr] ?? {}).map(([class_name, area_ha]) => ({
+                      year: yr,
+                      class_name,
+                      area_ha: Number(area_ha) || 0
+                  }))
+              )
+        : [];
+
+    // Passed to TrendChart, ChangeChart, SummaryCards and DataTable instead of the database store
+    $: ecoOverride = ecoregionFallback
+        ? {
+              region: filters.ecoregion,
+              year: ecoYear,
+              className: trendClass,
+              loading: ecoBusy,
+              error: ecoErr,
+              state: { loading: ecoBusy, error: ecoErr, data: ecoTrendData }, // used by TrendChart
+              points: ecoTrendData?.points ?? [],
+              series: ecoSeries,
+              yearList: ecoYearList,
+              rows: ecoRows,
+              total: ecoTotal,
+              allRows: ecoAllRows
+          }
+        : null;
 
     // Whichever geometry is active in the current mode
     $: analysisGeometry = polygonMode
         ? selectedGeometry
         : provinceMode
             ? selectedProvince?.geometry ?? null
-            : null;
+            : ecoregionFallback
+                ? ecoregionGeometry
+                : null;
 
     $: if (geometryMode && analysisGeometry && filters.year) {
         runAnalysis(analysisGeometry, filters.year);
@@ -186,14 +345,16 @@
 
     // ---------- What the chart receives ----------
     $: chartAreaHa = geometryMode ? polyAreaHa : dbAreaHa;
-    $: chartLoading = geometryMode ? polyLoading : $catalog.loading || $summary.loading;
-    $: chartError = geometryMode ? polyError : $catalog.error || $summary.error;
+    $: chartLoading = geometryMode ? polyLoading || ecoLoading : $catalog.loading || $summary.loading;
+    $: chartError = geometryMode ? polyError || ecoError : $catalog.error || $summary.error;
     $: chartFilled = geometryMode ? [] : dbFilled;
     $: chartHint = polygonMode
         ? "Draw a polygon on the map to see its land cover"
         : provinceMode && !provinceInDb
             ? "Click a province on the map to see its land cover"
-            : dbHint;
+            : ecoregionFallback
+                ? `Could not get land cover for ${filters.ecoregion}`
+                : dbHint;
 
     // Name of the selected area (used in the chart title)
     $: selectedArea = (() => {
@@ -226,12 +387,12 @@
 
     // Chart card tabs
     let tab = "chart";
-    $: if (geometryMode) tab = "chart";
+    // Drawn polygon / province outside the database: bar chart only.
+    // Ecoregion outside the database: all four tabs (built from the per-year analysis).
+    $: if (geometryMode && !ecoregionFallback) tab = "chart";
 
     // "chart" = bar chart only, "trend" = line chart only, "change" = gain/loss chart, "table" = table and export
-    // Show only one chart at a time
-    $: showBar = geometryMode || tab === "chart";
-    $: showLine = !geometryMode && tab === "trend";
+    // Only one chart is shown at a time
 
     // ---------- Resizable middle section ----------
     // mapFraction: share of the height used by the map row (the charts get the rest)
@@ -411,7 +572,7 @@
                 on:dblclick={resetRow}
             ></div>
 
-            {#if !geometryMode}
+            {#if !geometryMode || ecoregionFallback}
                 <div class="tabs" role="tablist">
                     <button role="tab" aria-selected={tab === "chart"}
                             class:active={tab === "chart"} on:click={() => (tab = "chart")}>
@@ -435,7 +596,7 @@
                 </div>
             {/if}
 
-            {#if geometryMode || tab === "chart"}
+            {#if (geometryMode && !ecoregionFallback) || tab === "chart"}
                 <div class="charts">
                     <div class="bar-slot">
                         <LandcoverChart
@@ -452,15 +613,18 @@
             {:else if tab === "trend"}
                 <div class="charts">
                     <div class="trend">
-                        <TrendChart on:classChange={handleTrendClassChange} />
+                        <TrendChart
+                            override={ecoOverride}
+                            on:classChange={handleTrendClassChange}
+                        />
                     </div>
                 </div>
             {:else if tab === "change"}
-                <div class="change-slot"><ChangeChart /></div>
+                <div class="change-slot"><ChangeChart override={ecoOverride} /></div>
             {:else}
                 <div class="data">
-                    <SummaryCards />
-                    <DataTable />
+                    <SummaryCards override={ecoOverride} />
+                    <DataTable override={ecoOverride} />
                 </div>
             {/if}
         </div>

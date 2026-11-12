@@ -4,24 +4,37 @@
   import { colorFor } from '../lib/classes.js';
   import AsyncState from './AsyncState.svelte';
 
+  // Optional: { region, year, className, loading, error, points, total }
+  // When given (ecoregion that is not in the database), it replaces the database store.
+  export let override = null;
+
+  // ---------- where the data comes from ----------
+  $: state = override
+    ? { loading: override.loading, error: override.error, data: { points: override.points } }
+    : $trend;
+  $: region = override ? override.region : $filters.region;
+  $: year = override ? override.year : $filters.year;
+  $: className = override ? override.className : $filters.className;
+  $: missing = override ? false : $filters.missing;
+  $: total = override ? override.total : ($summary.data?.total_area_ha ?? 0);
+
   // Ignore years the source had no row for (stored as 0, not a real zero)
-  $: pts = ($trend.data?.points ?? []).filter((p) => !p.filled_missing);
+  $: pts = (state.data?.points ?? []).filter((p) => !p.filled_missing);
 
   $: first = pts[0];
-  $: cur = pts.find((p) => p.year === $filters.year) ?? pts[pts.length - 1];
+  $: cur = pts.find((p) => p.year === year) ?? pts[pts.length - 1];
   $: peak = pts.reduce((a, p) => (!a || p.area_ha > a.area_ha ? p : a), null);
   $: low = pts.reduce((a, p) => (!a || p.area_ha < a.area_ha ? p : a), null);
 
-  $: total = $summary.data?.total_area_ha ?? 0;
   $: change = first && cur ? cur.area_ha - first.area_ha : 0;
   $: changePct = first?.area_ha ? (100 * change) / first.area_ha : 0;
   $: sign = (v) => (v > 0 ? '+' : '');
 
-  $: color = colorFor($filters.className);
+  $: color = colorFor(className);
 
   $: cards = first && cur ? [
     {
-      label: `${$filters.className} in ${cur.year}`,
+      label: `${className} in ${cur.year}`,
       value: full(cur.area_ha),
       sub: total ? `${((100 * cur.area_ha) / total).toFixed(1)}% of region` : '',
       color,
@@ -46,12 +59,12 @@
     },
   ] : [];
 
-  $: emptyText = $filters.missing
-    ? `No data found for "${$filters.region}".`
+  $: emptyText = missing
+    ? `No data found for "${region}".`
     : 'No yearly records for this class and region.';
 </script>
 
-<AsyncState state={$trend} isEmpty={cards.length === 0} {emptyText}>
+<AsyncState {state} isEmpty={cards.length === 0} {emptyText}>
   <div class="cards">
     {#each cards as c}
       <div class="card" style="--accent:{c.color}">

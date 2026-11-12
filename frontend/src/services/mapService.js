@@ -423,6 +423,44 @@ function buildWhere(nameField, name) {
     return `${nameField} = '${safeName}'`;
 }
 
+/**
+ * NEW: get the boundary of one ecoregion as a GeoJSON geometry (Polygon or MultiPolygon),
+ * so it can be sent to the analysis API like a drawn polygon.
+ * Used for ecoregions that are not in the database.
+ */
+export async function fetchEcoregionGeometry(name) {
+    const info = await loadEcoregionInfo();
+
+    if (!info.nameField || !name) return null;
+
+    const params = new URLSearchParams({
+        where: buildWhere(info.nameField, name),
+        outFields: info.nameField,
+        returnGeometry: "true",
+        outSR: "4326",
+        maxAllowableOffset: "0.002", // simplify to ~200 m so the request stays small
+        geometryPrecision: "5",
+        f: "geojson"
+    });
+
+    const data = await fetchJson(`${ECOREGION_URL}/query?${params}`);
+
+    // One ecoregion can be several features: merge them into a single geometry
+    const polygons = [];
+
+    for (const feature of data.features || []) {
+        const g = feature.geometry;
+        if (g?.type === "Polygon") polygons.push(g.coordinates);
+        else if (g?.type === "MultiPolygon") polygons.push(...g.coordinates);
+    }
+
+    if (polygons.length === 0) return null;
+
+    return polygons.length === 1
+        ? { type: "Polygon", coordinates: polygons[0] }
+        : { type: "MultiPolygon", coordinates: polygons };
+}
+
 export function createEcoregionLayer(map, info) {
     const { nameField, names } = info;
 
