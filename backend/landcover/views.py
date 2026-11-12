@@ -1,13 +1,14 @@
 import csv
 import json
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
 from urllib.error import URLError, HTTPError
 from urllib.request import Request, urlopen
 
 import requests
 from django.core.cache import cache
-from django.db import transaction
+from django.db import connection, transaction
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
@@ -82,7 +83,14 @@ GEOBOUNDARIES_URL = "https://www.geoboundaries.org/api/current/gbOpen/NPL/ADM1/"
 # Some services call this class "Built-up area"; the database uses "Built-up"
 CLASS_FIX = {"Built-up area": "Built-up"}
 
-_province_lock = threading.Lock()
+# One lock per province, so computing one province never blocks another
+_locks = {}
+_locks_guard = threading.Lock()
+
+
+def _lock_for(name):
+    with _locks_guard:
+        return _locks.setdefault(name, threading.Lock())
 
 
 def get_province_geojson():
@@ -115,7 +123,7 @@ def province_name(feature):
 
 def ensure_province(name):
     """Compute and save a province's land cover the first time it is requested."""
-    with _province_lock:  # the frontend sends several requests at once; compute only once
+    with _lock_for(name):  # several requests arrive at once; compute only once
         if LandcoverRecord.objects.filter(region_type="province", region=name).exists():
             return
 
@@ -123,9 +131,16 @@ def ensure_province(name):
         if feature is None:
             return
 
+        def compute(item):
+            year, layer_id = item
+            return year, area_by_class(feature["geometry"], layer_id)
+
+        # Years are independent, so ask ICIMOD for several at the same time
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            results = list(pool.map(compute, sorted(YEAR_LAYER.items())))
+
         rows = []
-        for year, layer_id in sorted(YEAR_LAYER.items()):
-            result = area_by_class(feature["geometry"], layer_id)
+        for year, result in results:
             areas = {CLASS_FIX.get(k, k): float(v) for k, v in result.items()}
 
             for class_name in CLASS_ORDER:
@@ -140,6 +155,32 @@ def ensure_province(name):
 
         with transaction.atomic():  # all years or nothing
             LandcoverRecord.objects.bulk_create(rows)
+
+
+_warm_started = False
+
+
+def warm_provinces():
+    """Compute every province once, in a background thread."""
+    global _warm_started
+    if _warm_started:
+        return
+    _warm_started = True
+
+    def work():
+        global _warm_started
+        try:
+            for feature in get_province_features():
+                name = province_name(feature)
+                if name:
+                    ensure_province(name)  # skips ones already saved
+        except Exception as e:
+            print("province warm-up failed:", e)
+            _warm_started = False  # allow a retry on the next page load
+        finally:
+            connection.close()  # this thread has its own database connection
+
+    threading.Thread(target=work, daemon=True).start()
 
 
 def nepal_provinces(request):
@@ -272,6 +313,8 @@ def regions(request):
     )
     present = set(LandcoverRecord.objects.values_list("class_name", flat=True).distinct())
     classes = [c for c in CLASS_ORDER if c in present] + sorted(present - set(CLASS_ORDER))
+
+    warm_provinces()  # start computing provinces in the background
 
     return Response({"region_types": region_types, "years": years, "classes": classes})
 
