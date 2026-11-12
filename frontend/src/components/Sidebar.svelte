@@ -39,6 +39,26 @@
         "Riverbed"
     ];
 
+    // "Draw polygon" has no stored time series, so the trend cannot be shown
+    $: polygonMode = selectedParameter === "polygon";
+
+    let trendMessage = "";
+    let messageTimer;
+
+    $: if (!polygonMode) trendMessage = "";
+
+    function blockTrend(event) {
+        if (!polygonMode) return;
+
+        event.preventDefault(); // keep the checkbox as it was
+
+        trendMessage =
+            "Trend is not available for a drawn polygon.";
+
+        clearTimeout(messageTimer);
+        messageTimer = setTimeout(() => (trendMessage = ""), 4000);
+    }
+
     function updateFilters() {
         dispatch("filtersChange", {
             parameter: selectedParameter,
@@ -174,18 +194,25 @@
         <!-- Land-cover trend -->
         <div class="trend-group">
 
-            <label class="trend-checkbox">
+            <label class="trend-checkbox" class:disabled={polygonMode}>
                 <input
                     type="checkbox"
                     bind:checked={showTrend}
+                    on:click={blockTrend}
                     on:change={updateFilters}
+                    aria-disabled={polygonMode}
                 />
                 Show trend
             </label>
 
+            {#if trendMessage}
+                <p class="trend-message" role="alert">{trendMessage}</p>
+            {/if}
+
             <select
                 bind:value={selectedLandcover}
                 on:change={updateFilters}
+                disabled={polygonMode}
             >
                 {#each landcoverClasses as landcover}
                     <option value={landcover}>
@@ -291,6 +318,21 @@
 
     .trend-group select {
         margin-top: 0;
+    }
+
+    .trend-checkbox.disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+    }
+
+    .trend-message {
+        margin: 0 0 7px;
+        padding: 6px 8px;
+        font-size: 12px;
+        color: #8a1f11;
+        background: #fdecea;
+        border: 1px solid #f5c2bd;
+        border-radius: 4px;
     }
 
     /* Tablets and phones: lay the options out in columns instead of one long stack */
