@@ -254,15 +254,10 @@
           <line x1={M.l} x2={w - M.r} y1={zeroY} y2={zeroY} class="zero" />
         {/if}
 
-        {#each plotRows as r, i}
+        {#each plotRows as r, i (r.name)}
           {@const cx = M.l + band * i + band / 2}
           {@const bw = Math.min(band * 0.5, 56)}
           <g class:active={tip && tip.r.name === r.name}>
-            <rect class="hit" x={M.l + band * i} y={M.t} width={band} height={ih}
-                  on:mouseenter={(e) => showTip(e, r)}
-                  on:mousemove={(e) => showTip(e, r)}
-                  on:mouseleave={hideTip}
-                  role="presentation" />
 
             {#if r.drawn}
               {@const top = Math.min(y(r.value), zeroY)}
@@ -288,6 +283,13 @@
             {:else}
               <text class="cls" x={cx} y={h - M.b + 18} text-anchor="middle">{r.name}</text>
             {/if}
+
+            <!-- LAST: transparent layer on top catches the mouse over bars and labels -->
+            <rect class="hit" x={M.l + band * i} y={M.t} width={band} height={ih}
+                  on:mouseenter={(e) => showTip(e, r)}
+                  on:mousemove={(e) => showTip(e, r)}
+                  on:mouseleave={hideTip}
+                  role="presentation" />
           </g>
         {/each}
       </svg>
