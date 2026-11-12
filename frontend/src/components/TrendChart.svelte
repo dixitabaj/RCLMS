@@ -1,8 +1,29 @@
 <script>
+  import { createEventDispatcher } from 'svelte';
   import { trend, filters } from '../stores/dashboard.js';
   import { colorFor } from '../lib/classes.js';
   import { compact, full } from '../lib/format.js';
   import AsyncState from './AsyncState.svelte';
+
+  const dispatch = createEventDispatcher();
+
+  // Same names as the sidebar and the Django API (the API rejects any other spelling)
+  const landcoverClasses = [
+    'Forest',
+    'Grassland',
+    'Cropland',
+    'Bare soil',
+    'Bare rock',
+    'Built-up',
+    'Snow and glacier',
+    'Water body',
+    'Riverbed'
+  ];
+
+  // Tell App.svelte, which owns the selection and passes it back to the sidebar too
+  function handleClassChange(event) {
+    dispatch('classChange', event.target.value);
+  }
 
   // The chart is drawn at the real pixel size of its box, so text stays the
   // same size and the chart always fills the card (no stretched fonts).
@@ -62,6 +83,20 @@
 </script>
 
 <div class="trend-root">
+  <div class="trend-controls">
+    <label for="landcover-class">Land cover:</label>
+
+    <select
+      id="landcover-class"
+      value={$filters.className}
+      on:change={handleClassChange}
+    >
+      {#each landcoverClasses as className}
+        <option value={className}>{className}</option>
+      {/each}
+    </select>
+  </div>
+
   <h3>
     {$filters.className} in {$filters.region}{pts.length ? `, ${x0}–${x1}` : ''}
   </h3>
@@ -126,6 +161,28 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
+  }
+
+  .trend-controls {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-bottom: 4px;
+    flex-shrink: 0;
+  }
+
+  .trend-controls label {
+    font-size: 13px;
+    color: #555;
+  }
+
+  .trend-controls select {
+    padding: 4px 10px;
+    border: 1px solid #dfe5e1;
+    border-radius: 6px;
+    background: white;
+    font-size: 13px;
   }
 
   h3 {

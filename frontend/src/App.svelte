@@ -49,6 +49,15 @@
         filters = { ...event.detail };
     }
 
+    function handleTrendClassChange(event) {
+    applyFilters({
+        regionType: dbTarget.regionType,
+        region: dbTarget.region,
+        year: Number(filters.year),
+        className: event.detail
+    });
+}
+
     function handlePolygon(event) {
         selectedGeometry = event.detail;
     }
@@ -219,15 +228,14 @@
     let tab = "chart";
     $: if (geometryMode) tab = "chart";
 
-    // "chart" = bar + line, "trend" = line chart only, "change" = gain/loss chart, "table" = table and export
+    // "chart" = bar chart only, "trend" = line chart only, "change" = gain/loss chart, "table" = table and export
+    // Show only one chart at a time
     $: showBar = geometryMode || tab === "chart";
-    $: showLine = !geometryMode && (tab === "trend" || (tab === "chart" && filters.showTrend));
+    $: showLine = !geometryMode && tab === "trend";
 
     // ---------- Resizable middle section ----------
     // mapFraction: share of the height used by the map row (the charts get the rest)
-    // chartSplit: share of the chart card's width used by the bar chart (the line chart gets the rest)
     const DEFAULT_MAP = 0.625;
-    const DEFAULT_SPLIT = 0.5;
 
     function loadSize(key, fallback) {
         try {
@@ -249,9 +257,7 @@
     const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 
     let mapFraction = loadSize("rlcms.mapFraction", DEFAULT_MAP);
-    let chartSplit = loadSize("rlcms.chartSplit", DEFAULT_SPLIT);
     let centerEl;
-    let chartsEl;
     let dragging = false;
 
     // Generic pointer drag: keeps receiving events even when the pointer is over the map
@@ -286,17 +292,6 @@
         );
     }
 
-    function startColDrag(event) {
-        startDrag(
-            event,
-            (e) => {
-                const r = chartsEl.getBoundingClientRect();
-                chartSplit = clamp((e.clientX - r.left) / r.width, 0.15, 0.85);
-            },
-            () => saveSize("rlcms.chartSplit", chartSplit)
-        );
-    }
-
     // Keyboard: arrow keys move the divider, Home resets it
     function rowKey(e) {
         if (e.key === "ArrowUp") mapFraction = clamp(mapFraction - 0.03, 0.15, 0.85);
@@ -307,19 +302,10 @@
         saveSize("rlcms.mapFraction", mapFraction);
     }
 
-    function colKey(e) {
-        if (e.key === "ArrowLeft") chartSplit = clamp(chartSplit - 0.03, 0.15, 0.85);
-        else if (e.key === "ArrowRight") chartSplit = clamp(chartSplit + 0.03, 0.15, 0.85);
-        else if (e.key === "Home") chartSplit = DEFAULT_SPLIT;
-        else return;
-        e.preventDefault();
-        saveSize("rlcms.chartSplit", chartSplit);
-    }
-
     function resetAll() {
         mapFraction = DEFAULT_MAP;
-        chartSplit = DEFAULT_SPLIT;
         try {
+            // "chartSplit" is kept here to clear any previously saved layout preference
             ["mapFraction", "chartSplit"].forEach((k) =>
                 localStorage.removeItem("rlcms." + k)
             );
@@ -331,11 +317,6 @@
     function resetRow() {
         mapFraction = DEFAULT_MAP;
         saveSize("rlcms.mapFraction", mapFraction);
-    }
-
-    function resetCol() {
-        chartSplit = DEFAULT_SPLIT;
-        saveSize("rlcms.chartSplit", chartSplit);
     }
 
     onMount(async () => {
@@ -454,46 +435,25 @@
                 </div>
             {/if}
 
-            {#if geometryMode || tab === "chart" || tab === "trend"}
-                <div
-                    class="charts"
-                    bind:this={chartsEl}
-                    style="--bar-grow: {chartSplit * 100}; --trend-grow: {(1 - chartSplit) * 100};"
-                >
-                    {#if showBar}
-                        <div class="bar-slot" class:alone={!showLine}>
-                            <LandcoverChart
-                                title={chartTitle}
-                                areaHa={chartAreaHa}
-                                year={filters.year}
-                                loading={chartLoading}
-                                error={chartError}
-                                hint={chartHint}
-                                filled={chartFilled}
-                            />
-                        </div>
-                    {/if}
-
-                    {#if showBar && showLine}
-                        <!-- Drag left/right to resize the bar chart and the line chart -->
-                        <div
-                            class="col-handle"
-                            role="separator"
-                            aria-orientation="vertical"
-                            aria-label="Resize bar chart and line chart"
-                            aria-valuemin="15"
-                            aria-valuemax="85"
-                            aria-valuenow={Math.round(chartSplit * 100)}
-                            tabindex="0"
-                            on:pointerdown={startColDrag}
-                            on:keydown={colKey}
-                            on:dblclick={resetCol}
-                        ></div>
-                    {/if}
-
-                    {#if showLine}
-                        <div class="trend" class:alone={!showBar}><TrendChart /></div>
-                    {/if}
+            {#if geometryMode || tab === "chart"}
+                <div class="charts">
+                    <div class="bar-slot">
+                        <LandcoverChart
+                            title={chartTitle}
+                            areaHa={chartAreaHa}
+                            year={filters.year}
+                            loading={chartLoading}
+                            error={chartError}
+                            hint={chartHint}
+                            filled={chartFilled}
+                        />
+                    </div>
+                </div>
+            {:else if tab === "trend"}
+                <div class="charts">
+                    <div class="trend">
+                        <TrendChart on:classChange={handleTrendClassChange} />
+                    </div>
                 </div>
             {:else if tab === "change"}
                 <div class="change-slot"><ChangeChart /></div>
@@ -681,16 +641,12 @@
         gap: 6px;
     }
 
-    /* ---- resize handles (middle section only) ---- */
-    .row-handle,
-    .col-handle {
+    /* ---- resize handle (map / chart split) ---- */
+    .row-handle {
         touch-action: none;
         display: flex;
         align-items: center;
         justify-content: center;
-    }
-
-    .row-handle {
         position: absolute;
         left: 0;
         right: 0;
@@ -708,19 +664,6 @@
         background: #9db8a8;
     }
 
-    .col-handle {
-        flex: 0 0 18px;
-        cursor: col-resize;
-    }
-
-    .col-handle::before {
-        content: "";
-        width: 6px;
-        height: 80px;
-        border-radius: 3px;
-        background: #9db8a8;
-    }
-
     .reset-layout {
         margin-left: auto;
         font-size: 12px;
@@ -729,16 +672,12 @@
     }
 
     .row-handle:hover::before,
-    .col-handle:hover::before,
     .row-handle:focus-visible::before,
-    .col-handle:focus-visible::before,
-    .dragging .row-handle::before,
-    .dragging .col-handle::before {
+    .dragging .row-handle::before {
         background: #0b7d3b;
     }
 
-    .row-handle:focus-visible,
-    .col-handle:focus-visible {
+    .row-handle:focus-visible {
         outline: 2px solid #0b6fd6;
     }
 
@@ -765,10 +704,18 @@
     .tabs button:focus-visible { outline: 2px solid #0b6fd6; outline-offset: 2px; }
 
     .charts { flex: 1; min-height: 0; display: flex; gap: 0; overflow: hidden; }
-    .bar-slot { flex: var(--bar-grow, 50) 1 0; min-width: 0; min-height: 0; display: flex; }
-    .bar-slot.alone { flex: 1 1 0; }
-    .trend { flex: var(--trend-grow, 50) 1 0; min-width: 0; min-height: 0; overflow: hidden; }
-    .trend.alone { flex: 1 1 0; }
+    .bar-slot {
+        flex: 1 1 0;
+        min-width: 0;
+        min-height: 0;
+        display: flex;
+    }
+    .trend {
+        flex: 1 1 0;
+        min-width: 0;
+        min-height: 0;
+        overflow: hidden;
+    }
     .change-slot { flex: 1; min-height: 0; min-width: 0; display: flex; overflow: hidden; }
     .data { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
 
@@ -875,8 +822,7 @@
         min-height: 250px;
     }
 
-    .row-handle,
-    .col-handle {
+    .row-handle {
         display: none;
     }
 }

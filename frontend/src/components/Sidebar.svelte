@@ -65,7 +65,6 @@
             ecoregion: selectedEcoregion,
             hotspot: selectedHotspot,
             year: selectedYear,
-            showTrend,
             landcover: selectedLandcover
         });
     }
@@ -191,37 +190,7 @@
             </select>
         </div>
 
-        <!-- Land-cover trend -->
-        <div class="trend-group">
-
-            <label class="trend-checkbox" class:disabled={polygonMode}>
-                <input
-                    type="checkbox"
-                    bind:checked={showTrend}
-                    on:click={blockTrend}
-                    on:change={updateFilters}
-                    aria-disabled={polygonMode}
-                />
-                Show trend
-            </label>
-
-            {#if trendMessage}
-                <p class="trend-message" role="alert">{trendMessage}</p>
-            {/if}
-
-            <select
-                bind:value={selectedLandcover}
-                on:change={updateFilters}
-                disabled={polygonMode}
-            >
-                {#each landcoverClasses as landcover}
-                    <option value={landcover}>
-                        {landcover}
-                    </option>
-                {/each}
-            </select>
-
-        </div>
+     
 
     </div>
 
