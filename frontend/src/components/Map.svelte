@@ -231,6 +231,9 @@
         map.options.zoomSnap = 0.25;
         map.options.zoomDelta = 0.5;
 
+        // Slightly zoom in when the map first opens
+        map.setZoom(5);
+
         // --------------------------------
         // RESPONSIVE MAP
         // --------------------------------
