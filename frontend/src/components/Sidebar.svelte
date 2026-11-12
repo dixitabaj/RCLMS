@@ -203,7 +203,6 @@
 <style>
     .sidebar {
         width: 100%;
-        min-height: 610px;
         background: #f0f0f0;
         border-radius: 9px;
         overflow: hidden;
@@ -220,11 +219,11 @@
     }
 
     .sidebar-content {
-        padding: 10px 14px;
+        padding: 16px 14px;
     }
 
     .radio-group {
-        margin-bottom: 8px;
+        margin-bottom: 16px;
     }
 
     .radio-group label {
@@ -260,8 +259,8 @@
     }
 
     .year-group {
-        margin-top: 12px;
-        margin-bottom: 7px;
+        margin-top: 18px;
+        margin-bottom: 14px;
     }
 
     .year-group label {
@@ -292,5 +291,19 @@
 
     .trend-group select {
         margin-top: 0;
+    }
+
+    /* Tablets and phones: lay the options out in columns instead of one long stack */
+    @media (max-width: 900px) {
+        .sidebar-content {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 16px 16px;
+        }
+
+        .radio-group,
+        .year-group {
+            margin: 0;
+        }
     }
 </style>

@@ -1,11 +1,20 @@
 import L from "leaflet";
 import * as esri from "esri-leaflet";
+import intersect from "@turf/intersect";
 
 const MAP_SERVER_URL =
     "https://geoapps.icimod.org/icimodarcgis/rest/services/HKH/Landcover/MapServer";
 
 const ECOREGION_URL =
     "https://geoapps.icimod.org/icimodarcgis/rest/services/HKH/Environment/MapServer/2";
+
+// Box around the Hindu Kush Himalaya (west, south, east, north in degrees).
+// Ecoregions and hotspots that do not touch this box (Europe, Africa, ...) are left out.
+const HKH_ENVELOPE = "60.5,21,105.5,40";
+
+// HKH outline (same service the "HKH boundary" layer uses). Layer 0 = the outline polygon.
+const HKH_OUTLINE_URL =
+    "https://geoapps.icimod.org/icimodarcgis/rest/services/HKH/Outline/MapServer/0";
 
 const BIODIVERSITY_URL =
     "https://services6.arcgis.com/NonisTlG4TcVAsSk/ArcGIS/rest/services/Biodiversity_Hotspots/FeatureServer/0";
@@ -64,6 +73,70 @@ function hotspotName(feature) {
     return String(p.name || p.NAME || "").trim().toLowerCase();
 }
 
+// GeoJSON outer rings -> Leaflet [lat, lng] rings
+function outerRings(geometry) {
+    const polygons =
+        geometry?.type === "Polygon" ? [geometry.coordinates] :
+        geometry?.type === "MultiPolygon" ? geometry.coordinates : [];
+
+    return polygons.map(poly => poly[0].map(([lng, lat]) => [lat, lng]));
+}
+
+/* ---- Clip hotspots to the HKH outline -------------------------------- */
+
+let hkhOutlinePromise = null;
+
+function loadHkhOutline() {
+    if (!hkhOutlinePromise) {
+        hkhOutlinePromise = new Promise((resolve, reject) => {
+            esri.query({ url: HKH_OUTLINE_URL })
+                .where("1=1")
+                .run((error, featureCollection) => {
+                    if (error || !featureCollection?.features?.length) {
+                        reject(error || new Error("HKH outline is empty"));
+                        return;
+                    }
+                    resolve(featureCollection.features);
+                });
+        }).catch(error => {
+            hkhOutlinePromise = null; // allow a retry
+            throw error;
+        });
+    }
+
+    return hkhOutlinePromise;
+}
+
+/**
+ * Keep only the four hotspots and cut them to the HKH outline,
+ * so they stop at the same border as the ecoregions.
+ * If the outline can't be loaded, the unclipped hotspots are used.
+ */
+async function clipHotspotsToHkh(data) {
+    const wanted = data.features.filter(f => ALLOWED_HOTSPOTS.has(hotspotName(f)));
+
+    try {
+        const outline = await loadHkhOutline();
+        const clipped = [];
+
+        for (const feature of wanted) {
+            for (const part of outline) {
+                const piece = intersect(feature, part);
+
+                if (piece) {
+                    piece.properties = feature.properties;
+                    clipped.push(piece);
+                }
+            }
+        }
+
+        return { type: "FeatureCollection", features: clipped };
+    } catch (error) {
+        console.warn("Could not clip hotspots to the HKH, showing them unclipped:", error);
+        return { type: "FeatureCollection", features: wanted };
+    }
+}
+
 /**
  * Overlay layer with the four dashboard hotspot polygons (toggled by the layer selector).
  * It also acts as the in-memory data store used by the selection function.
@@ -93,7 +166,9 @@ export function createBiodiversityLayer(map) {
     });
 
     layer._biodiversityLoaded = fetch(
-        `${BIODIVERSITY_URL}/query?where=1%3D1&outFields=*&returnGeometry=true&outSR=4326&f=geojson`
+        `${BIODIVERSITY_URL}/query?where=1%3D1&outFields=*&returnGeometry=true&outSR=4326` +
+        `&geometry=${HKH_ENVELOPE}&geometryType=esriGeometryEnvelope&inSR=4326` +
+        `&spatialRel=esriSpatialRelIntersects&f=geojson`
     )
         .then(response => {
             if (!response.ok) {
@@ -101,14 +176,14 @@ export function createBiodiversityLayer(map) {
             }
             return response.json();
         })
-        .then(data => {
+        .then(async data => {
             if (!data.features || data.features.length === 0) {
                 throw new Error("No biodiversity features returned");
             }
 
             console.log("Biodiversity features loaded:", data.features.length);
 
-            layer.addData(data);
+            layer.addData(await clipHotspotsToHkh(data));
 
             const kept = layer.getLayers().length;
             console.log(`Biodiversity: kept ${kept} of ${data.features.length} polygons`);
@@ -134,8 +209,16 @@ let selectedHotspotLayer = null;
    the user has already switched to something else */
 let hotspotRequestId = 0;
 
+/* White fade over the HKH, outside the selected hotspot */
+let hotspotMask = null;
+
 export function clearBiodiversityHighlight(map) {
     hotspotRequestId++; // invalidates any selection still loading
+
+    if (map && hotspotMask) {
+        map.removeLayer(hotspotMask);
+    }
+    hotspotMask = null;
 
     if (map && selectedHotspotLayer) {
         map.removeLayer(selectedHotspotLayer);
@@ -202,6 +285,31 @@ export async function filterBiodiversityHotspot(map, layer, name) {
         }
     ).addTo(map);
 
+    // Fade the rest of the HKH: HKH outline with the selected hotspot cut out
+    loadHkhOutline()
+        .then(outline => {
+            if (requestId !== hotspotRequestId) return;
+
+            const hkhRings = outline.flatMap(f => outerRings(f.geometry));
+            const holes = matches.flatMap(f => outerRings(f.geometry));
+
+            if (!map.getPane("hotspotMask")) {
+                map.createPane("hotspotMask");
+                map.getPane("hotspotMask").style.zIndex = 440; // above land cover, below outlines
+                map.getPane("hotspotMask").style.pointerEvents = "none";
+            }
+
+            hotspotMask = L.polygon([...hkhRings, ...holes], {
+                pane: "hotspotMask",
+                stroke: false,
+                fillColor: "#ffffff",
+                fillOpacity: 0.8   // raise for a paler background, lower to see more
+            }).addTo(map);
+        })
+        .catch(error => {
+            console.warn("Could not fade the area outside the hotspot:", error);
+        });
+
     const bounds = selectedHotspotLayer.getBounds();
 
     if (bounds.isValid()) {
@@ -264,6 +372,10 @@ async function fetchEcoregionInfo() {
             returnGeometry: "false",
             returnDistinctValues: "true",
             orderByFields: nameField,
+            geometry: HKH_ENVELOPE,
+            geometryType: "esriGeometryEnvelope",
+            inSR: "4326",
+            spatialRel: "esriSpatialRelIntersects",
             f: "json"
         });
 
@@ -392,10 +504,50 @@ export function zoomToEcoregion(map, layer, nameField, name) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Selected ecoregion boundary highlight                               */
+/* Selected ecoregion: red outline + fade the other HKH ecoregions     */
 /* ------------------------------------------------------------------ */
 
 let selectedEcoregionLayer = null;
+let ecoregionMask = null;
+
+function clearEcoregionMask(map) {
+    if (map && ecoregionMask) {
+        map.removeLayer(ecoregionMask);
+    }
+    ecoregionMask = null;
+}
+
+/**
+ * Fade every OTHER ecoregion with a white, semi-transparent fill.
+ * The ecoregion layer only covers the HKH, so the rest of the map stays untouched.
+ */
+function showEcoregionMask(map, nameField, name) {
+    clearEcoregionMask(map);
+
+    // Above the land cover, below the ecoregion overlay and the red outline
+    if (!map.getPane("ecoregionMask")) {
+        map.createPane("ecoregionMask");
+        map.getPane("ecoregionMask").style.zIndex = 440;
+        map.getPane("ecoregionMask").style.pointerEvents = "none"; // clicks go through
+    }
+
+    const safeName = name.replace(/'/g, "''");
+
+    ecoregionMask = esri.featureLayer({
+        url: ECOREGION_URL,
+        pane: "ecoregionMask",
+        useCors: true,
+        where: `${nameField} <> '${safeName}' OR ${nameField} IS NULL`,
+        simplifyFactor: 0.5,
+        precision: 5,
+
+        style: {
+            stroke: false,
+            fillColor: "#ffffff",
+            fillOpacity: 0.8   // raise for a paler background, lower to see more
+        }
+    }).addTo(map);
+}
 
 export function highlightEcoregion(map, nameField, name) {
     clearEcoregionHighlight(map);
@@ -428,6 +580,9 @@ export function highlightEcoregion(map, nameField, name) {
 
     selectedEcoregionLayer.addTo(map);
 
+    // Fade everything outside the selected ecoregion
+    showEcoregionMask(map, nameField, name);
+
     selectedEcoregionLayer
         .query()
         .where(where)
@@ -446,6 +601,8 @@ export function highlightEcoregion(map, nameField, name) {
 }
 
 export function clearEcoregionHighlight(map) {
+    clearEcoregionMask(map);
+
     if (selectedEcoregionLayer) {
         map.removeLayer(selectedEcoregionLayer);
         selectedEcoregionLayer = null;

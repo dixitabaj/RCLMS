@@ -859,6 +859,11 @@
         overflow-y: auto;
     }
 
+    .params .panel-body {
+        max-height: none;
+        overflow: visible;
+    }
+
     .charts {
         flex-direction: column;
         gap: 12px;

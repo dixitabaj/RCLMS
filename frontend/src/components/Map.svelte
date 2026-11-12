@@ -28,6 +28,7 @@
     // --------------------------------
 
     export let filters = {};
+    const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api";
 
     export let showHKH = false;
     export let showEcoregion = false;
@@ -237,6 +238,20 @@
     // Provinces are only visible in province mode
     $: setVisible(map, provinceLayer, provinceMode);
 
+        // Zoom to Nepal once each time "Nepal province" is selected
+    let zoomedToProvinces = false;
+
+    $: if (!provinceMode) {
+        zoomedToProvinces = false;
+    } else if (map && provinceLayer && !zoomedToProvinces) {
+        zoomedToProvinces = true;
+
+        map.invalidateSize();
+        map.fitBounds(provinceLayer.getBounds(), {
+            padding: [20, 20]
+        });
+    }
+
     // Leaving province mode: clear the highlight and tell App.svelte
     $: if (!provinceMode && selectedProvinceLayer && provinceLayer) {
         provinceLayer.resetStyle(selectedProvinceLayer);
@@ -274,7 +289,7 @@
         try {
             // Province GeoJSON comes through Django (Vite proxies /backend to it),
             // so the browser never talks to GitHub or geoBoundaries directly
-            const response = await fetch("/backend/api/provinces/");
+            const response = await fetch(`${API}/provinces/`);
 
             if (!response.ok) {
                 let message = "Province API failed";

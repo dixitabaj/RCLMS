@@ -14,6 +14,7 @@
     "vite": "^8.3.5"
   },
   "dependencies": {
+    "@turf/intersect": "^6.5.0",
     "chart.js": "^4.6.1",
     "esri-leaflet": "^3.0.19",
     "html-to-image": "^1.11.13",
