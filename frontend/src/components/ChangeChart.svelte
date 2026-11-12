@@ -340,7 +340,8 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 6px 14px;
-    margin-bottom: 4px;
+    margin-top: 10px;
+    margin-bottom: 8px;
     font-size: 13px;
     color: #444;
   }
