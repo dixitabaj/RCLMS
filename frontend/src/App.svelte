@@ -536,9 +536,9 @@
         gap: 12px;
         padding: 12px;
         grid-template-columns:
-            clamp(190px, 16vw, 240px)
-            minmax(0, 1fr)
-            clamp(190px, 16vw, 240px);
+    clamp(230px, 19vw, 290px)
+    minmax(0, 1fr)
+    clamp(230px, 19vw, 290px);
         grid-template-rows: minmax(0, 1fr);
     }
 
@@ -710,29 +710,160 @@
     .change-slot { flex: 1; min-height: 0; min-width: 0; display: flex; overflow: hidden; }
     .data { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
 
-    @media (max-width: 900px) {
-        .app { height: auto; min-height: 100dvh; }
-
-        .layout {
-            grid-template-columns: minmax(0, 1fr);
-            grid-template-rows: none;
-            grid-template-areas: "params" "map" "chart" "layers" "links" "about";
-        }
-
-        /* On small screens the columns disappear and the cards stack in this order */
-        .col { display: contents; }
-        .params     { grid-area: params; }
-        .map-card   { grid-area: map; }
-        .layers     { grid-area: layers; }
-        .links      { grid-area: links; }
-        .chart-card { grid-area: chart; }
-        .about      { grid-area: about; }
-
-        .map-card { min-height: 60vh; }
-        .chart-card { min-height: 340px; }
-        .charts { flex-direction: column; gap: 12px; }
-        .bar-slot, .trend { flex: 1 1 auto; }
-        .trend { min-height: 280px; }
-        .row-handle, .col-handle { display: none; }
+    
+/* Medium laptops */
+@media (max-width: 1200px) and (min-width: 901px) {
+    .layout {
+        gap: 8px;
+        padding: 8px;
+        grid-template-columns:
+            clamp(165px, 17vw, 205px)
+            minmax(0, 1fr)
+            clamp(165px, 17vw, 205px);
     }
+
+    .col {
+        gap: 8px;
+    }
+
+    .panel h2 {
+        padding: 9px 11px;
+        font-size: 15px;
+    }
+
+    .panel-body {
+        padding: 10px;
+        font-size: 13px;
+    }
+}
+
+/* Tablets and smaller screens */
+@media (max-width: 900px) {
+    .app {
+        height: auto;
+        min-height: 100dvh;
+    }
+
+    .layout {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: none;
+        grid-template-areas:
+            "params"
+            "map"
+            "chart"
+            "layers"
+            "links"
+            "about";
+        gap: 10px;
+        padding: 10px;
+    }
+
+    .col {
+        display: contents;
+    }
+
+    .params {
+        grid-area: params;
+    }
+
+    .map-card {
+        grid-area: map;
+        min-height: 55vh;
+    }
+
+    .chart-card {
+        grid-area: chart;
+        min-height: 400px;
+    }
+
+    .layers {
+        grid-area: layers;
+    }
+
+    .links {
+        grid-area: links;
+    }
+
+    .about {
+        grid-area: about;
+    }
+
+    .panel {
+        min-height: 120px;
+    }
+
+    .panel-body {
+        max-height: 260px;
+        overflow-y: auto;
+    }
+
+    .charts {
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .bar-slot,
+    .trend {
+        flex: 1 1 auto;
+        min-height: 250px;
+    }
+
+    .row-handle,
+    .col-handle {
+        display: none;
+    }
+}
+
+/* Mobile phones */
+@media (max-width: 600px) {
+    .layout {
+        gap: 8px;
+        padding: 7px;
+    }
+
+    .map-card {
+        min-height: 52vh;
+        padding: 5px;
+    }
+
+    .chart-card {
+        min-height: 420px;
+        padding: 8px;
+    }
+
+    .panel h2 {
+        padding: 10px;
+        font-size: 15px;
+    }
+
+    .panel-body {
+        padding: 10px;
+        font-size: 13px;
+        max-height: 220px;
+    }
+
+    .tabs {
+        flex-wrap: wrap;
+        gap: 5px;
+    }
+
+    .tabs button {
+        font-size: 11px;
+        padding: 5px 9px;
+    }
+
+    .reset-layout {
+        margin-left: 0;
+    }
+
+    .charts {
+        overflow-y: auto;
+    }
+
+    .bar-slot,
+    .trend {
+        min-height: 260px;
+    }
+}
+
 </style>
