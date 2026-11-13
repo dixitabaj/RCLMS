@@ -660,13 +660,6 @@
                     harmonized land cover database for the entire HKH region.
                 </p>
                 <p>
-                    <a
-                        href="https://servir.icimod.org/science-applications/regional-land-cover-monitoring-system-for-the-hindu-kush-himalaya/"
-                        target="_blank"
-                        rel="noreferrer"
-                    >
-                        View more…
-                    </a>
                 </p>
             </div>
         </section>
