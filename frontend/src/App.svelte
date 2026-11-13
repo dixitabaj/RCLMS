@@ -33,6 +33,10 @@
     let showHKH = false;
     let showEcoregion = false;
     let showBiodiversity = false;
+    let showForestOnly = false;
+
+    // Land-cover classes picked by clicking rows in the legend (bound to <Legend>, sent to <Map>)
+    let selectedClasses = [];
 
     // Real ecoregion names read from the ArcGIS layer
     let ecoregionNames = [];
@@ -549,6 +553,8 @@
                     {showHKH}
                     {showEcoregion}
                     {showBiodiversity}
+                    {showForestOnly}
+                    {selectedClasses}
                     on:polygon={handlePolygon}
                     on:province={handleProvince}
                 />
@@ -641,7 +647,7 @@
                     bind:showEcoregion
                     bind:showBiodiversity
                 />
-                <Legend layerId={legendLayerId} />
+                <Legend layerId={legendLayerId} bind:selectedClasses />
             </div>
         </section>
 

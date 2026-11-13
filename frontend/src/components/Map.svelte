@@ -10,18 +10,24 @@
 
     import { years } from "../data/landcoverYears.js";
 
-    import {
-        createMap,
-        changeLandcoverYear,
-        loadEcoregionInfo,
-        createEcoregionLayer,
-        filterEcoregion,
-        createBiodiversityLayer,
-        filterBiodiversityHotspot,
-        clearBiodiversityHighlight,
-        highlightEcoregion,
-        clearEcoregionHighlight
-    } from "../services/mapService.js";
+import {
+    createMap,
+    changeLandcoverYear,
+    loadEcoregionInfo,
+    createEcoregionLayer,
+    filterEcoregion,
+    createBiodiversityLayer,
+    filterBiodiversityHotspot,
+    clearBiodiversityHighlight,
+    highlightEcoregion,
+    clearEcoregionHighlight
+} from "../services/mapService.js";
+
+import {
+    createClassLayer,
+    changeClassYear,
+    setClassFilter
+} from "../services/classLayerService.js";
 
     // --------------------------------
     // PROPS FROM APP.SVELTE
@@ -33,6 +39,10 @@
     export let showHKH = false;
     export let showEcoregion = false;
     export let showBiodiversity = false;
+    export let showForestOnly = false;
+
+    // Land-cover classes picked in the legend, e.g. ["Forest", "Cropland"]
+    export let selectedClasses = [];
 
     // --------------------------------
     // EVENTS TO APP.SVELTE
@@ -48,6 +58,7 @@
     let map;
 
     let landcoverLayer;
+    let classLayer;
     let hkhBoundaryLayer;
     let ecoregionLayer;
     let biodiversityLayer;
@@ -90,6 +101,19 @@
     $: setVisible(map, ecoregionLayer, showEcoregion);
     $: setVisible(map, biodiversityLayer, showBiodiversity);
 
+    // Class filter: the legend selection plus the old "Forest only" checkbox.
+    // Nothing selected = normal land cover. Anything selected = only those classes.
+    $: activeClasses = [
+        ...new Set([
+            ...selectedClasses,
+            ...(showForestOnly ? ["Forest"] : [])
+        ])
+    ];
+
+    $: setVisible(map, landcoverLayer, activeClasses.length === 0);
+    $: if (classLayer) setClassFilter(classLayer, activeClasses);
+    $: setVisible(map, classLayer, activeClasses.length > 0);
+
     // --------------------------------
     // SELECTED LANDCOVER YEAR
     // --------------------------------
@@ -101,6 +125,14 @@
     $: if (landcoverLayer && selectedLayer) {
         changeLandcoverYear(
             landcoverLayer,
+            selectedLayer.layerId
+        );
+    }
+
+    // Keep the class-filter layer on the same year
+    $: if (classLayer && selectedLayer) {
+        changeClassYear(
+            classLayer,
             selectedLayer.layerId
         );
     }
@@ -238,7 +270,7 @@
     // Provinces are only visible in province mode
     $: setVisible(map, provinceLayer, provinceMode);
 
-        // Zoom to Nepal once each time "Nepal province" is selected
+    // Zoom to Nepal once each time "Nepal province" is selected
     let zoomedToProvinces = false;
 
     $: if (!provinceMode) {
@@ -289,7 +321,8 @@
         try {
             // Province GeoJSON comes through Django (Vite proxies /backend to it),
             // so the browser never talks to GitHub or geoBoundaries directly
-            const response = await fetch(`${API}provinces/`);
+            const province_API = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api/landcover/'
+            const response = await fetch(`${province_API}provinces/`);
 
             if (!response.ok) {
                 let message = "Province API failed";
@@ -392,6 +425,10 @@
         map = result.map;
         landcoverLayer = result.landcoverLayer;
 
+        // Class-filter layer (not added to the map until a legend class is selected).
+        // 21 = the land-cover layer the map starts on; the year block above keeps it in sync.
+        classLayer = createClassLayer(21);
+
         // Own pane above the other overlays so province clicks are not swallowed
         map.createPane("provincePane");
         map.getPane("provincePane").style.zIndex = 650;
@@ -480,6 +517,11 @@
         if (selectedLayer) {
             changeLandcoverYear(
                 landcoverLayer,
+                selectedLayer.layerId
+            );
+
+            changeClassYear(
+                classLayer,
                 selectedLayer.layerId
             );
         }

@@ -2,6 +2,7 @@
     export let showHKH = false;
     export let showEcoregion = false;
     export let showBiodiversity = false;
+    export let showForestOnly = false;
 </script>
 
 <!-- The "Layers" heading and panel box come from App.svelte -->
@@ -30,6 +31,7 @@
         />
         Biodiversity hotspot
     </label>
+   
 
 </div>
 
