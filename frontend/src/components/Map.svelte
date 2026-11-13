@@ -26,7 +26,7 @@ import {
 import {
     createClassLayer,
     changeClassYear,
-    setClassFilter
+    setClassFilter,
 } from "../services/classLayerService.js";
 
     // --------------------------------

@@ -1,12 +1,18 @@
 <script>
+  import { createEventDispatcher } from 'svelte';
   import { summary, trend, filters } from '../stores/dashboard.js';
   import { full } from '../lib/format.js';
-  import { colorFor } from '../lib/classes.js';
+  import { CLASS_COLORS, colorFor } from '../lib/classes.js';
   import AsyncState from './AsyncState.svelte';
 
   // Optional: { region, year, className, loading, error, points, total }
   // When given (ecoregion that is not in the database), it replaces the database store.
   export let override = null;
+
+  // Classes shown in the dropdown, taken from lib/classes.js
+  const classes = Object.keys(CLASS_COLORS);
+
+  const dispatch = createEventDispatcher();
 
   // ---------- where the data comes from ----------
   $: state = override
@@ -17,6 +23,19 @@
   $: className = override ? override.className : $filters.className;
   $: missing = override ? false : $filters.missing;
   $: total = override ? override.total : ($summary.data?.total_area_ha ?? 0);
+
+  // Keep the current class selectable even if it is not in the list above
+  $: options = classes.includes(className) || !className ? classes : [className, ...classes];
+
+  function pickClass(e) {
+    const value = e.target.value;
+    if (override) {
+      // override data is owned by the parent, so let it decide what to do
+      dispatch('classchange', value);
+    } else {
+      filters.update((f) => ({ ...f, className: value }));
+    }
+  }
 
   // Ignore years the source had no row for (stored as 0, not a real zero)
   $: pts = (state.data?.points ?? []).filter((p) => !p.filled_missing);
@@ -64,6 +83,17 @@
     : 'No yearly records for this class and region.';
 </script>
 
+<div class="toolbar">
+  <label>
+    Land cover class
+    <select value={className} on:change={pickClass}>
+      {#each options as c}
+        <option value={c}>{c}</option>
+      {/each}
+    </select>
+  </label>
+</div>
+
 {#if override?.loading}
   <p class="loading">Loading…</p>
 {:else}
@@ -82,6 +112,12 @@
 
 <style>
   .loading { margin: 12px 0; text-align: center; font-size: 13px; color: #777; }
+  .toolbar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+  .toolbar label { font-size: .85rem; color: #4a5a50; display: flex; align-items: center; gap: 6px; }
+  .toolbar select {
+    font-size: .85rem; padding: 3px 8px; border: 1px solid #c5d0c9;
+    border-radius: 4px; background: #fff; color: #14301f;
+  }
   .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
   .card {
     background: #fff; border-radius: 6px; padding: 12px 14px;
