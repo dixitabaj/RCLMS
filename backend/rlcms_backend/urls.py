@@ -4,7 +4,7 @@ from landcover import views
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("api/analysis/", views.analysis),
+    path("api/landcover/analysis/", views.analysis),
     path("api/landcover/regions/", views.regions, name="landcover-regions"),
     path("api/landcover/summary/", views.summary, name="landcover-summary"),
     path("api/landcover/trend/", views.trend, name="landcover-trend"),
