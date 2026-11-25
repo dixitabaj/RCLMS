@@ -17,5 +17,8 @@ tzdata==2026.6
 urllib3==2.8.0
 whitenoise==6.12.0
 psycopg[binary]
-
+rasterio
+numpy
+shapely
+pyproj
 python-dotenv
