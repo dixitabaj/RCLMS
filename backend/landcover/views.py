@@ -17,31 +17,72 @@ from rest_framework.response import Response
 
 from .models import LandcoverRecord
 from .serializers import LandcoverRecordSerializer
-from .services import area_by_class, YEAR_LAYER
+from .services import area_by_class_tiff
 
 
 # --------------------------------------------------------------------------
 # Polygon analysis (draw polygon)
 # --------------------------------------------------------------------------
-@csrf_exempt          # fine for local dev; use proper CSRF or token auth before deploying
+
+@csrf_exempt
 @require_POST
 def analysis(request):
+
     try:
         body = json.loads(request.body)
     except json.JSONDecodeError:
-        return JsonResponse({"error": "Invalid JSON"}, status=400)
+        return JsonResponse(
+            {"error": "Invalid JSON"},
+            status=400
+        )
 
-    year, geometry = body.get("year"), body.get("geometry")
-    if year not in YEAR_LAYER:
-        return JsonResponse({"error": f"No land-cover layer for year {year}"}, status=400)
-    if not geometry or geometry.get("type") not in ("Polygon", "MultiPolygon"):
-        return JsonResponse({"error": "geometry must be a GeoJSON Polygon or MultiPolygon"}, status=400)
+    year = body.get("year")
+    geometry = body.get("geometry")
 
     try:
-        result = area_by_class(geometry, YEAR_LAYER[year])
-    except requests.RequestException as e:
-        return JsonResponse({"error": f"ICIMOD service unavailable: {e}"}, status=502)
-    return JsonResponse({"year": year, "area_ha": result, "approximate": True})
+        year = int(year)
+    except (TypeError, ValueError):
+        return JsonResponse(
+            {"error": "Invalid year"},
+            status=400
+        )
+
+    # Initially support only 2000
+    if year != 2000:
+        return JsonResponse(
+            {"error": "Currently only 2000 is supported"},
+            status=400
+        )
+
+    if not geometry or geometry.get("type") not in (
+        "Polygon", "MultiPolygon"
+    ):
+        return JsonResponse(
+            {"error": "geometry must be a GeoJSON Polygon or MultiPolygon"},
+            status=400
+        )
+
+    try:
+        result = area_by_class_tiff(geometry)
+
+    except ValueError as e:
+        return JsonResponse(
+            {"error": str(e)},
+            status=400
+        )
+
+    except Exception as e:
+        print("Raster analysis error:", e)
+        return JsonResponse(
+            {"error": "Could not analyse the selected area"},
+            status=500
+        )
+
+    return JsonResponse({
+        "year": year,
+        "area_ha": result,
+        "approximate": False
+    })
 
 
 # Display order used everywhere (matches the legend on the ICIMOD site).
